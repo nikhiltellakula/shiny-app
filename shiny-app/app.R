@@ -15,10 +15,21 @@ ui <- fluidPage(
         sidebarPanel(
             
             # Date Range Select ----------
+            h3("Dates"),
             uiOutput("dates"),
             
             # Intervention Date Select ----------
-            uiOutput("int_date")
+            uiOutput("int_date"),
+            
+            # Target Time Series ----------
+            h3("Target Time Series"),
+            uiOutput("ts_target"),
+            
+            # Exclusion Time Series ----------
+            selectizeInput("ts_exclude",
+                           "Select time series to exclude from covariate selection.",
+                           choices = NULL,
+                           multiple = T)
             
         ),
 
@@ -31,7 +42,7 @@ ui <- fluidPage(
 )
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
+server <- function(input, output, session) {
     
     # Data Import Function ----------
     data_import <- reactive({
@@ -59,6 +70,35 @@ server <- function(input, output) {
         dateInput("intervention",
                   "Specify the intervention date.",
                   value = date)
+    })
+    
+    # Target Time Series ----------
+    output$ts_target <- renderUI({
+        
+        # all variables
+        ts_vars <- colnames(data_import())
+        ts_vars <- ts_vars[-1] # get rid of date
+        
+        selectizeInput("ts_target",
+                       "Select the target time series.",
+                       choices = ts_vars,
+                       multiple = F)
+    })
+    
+    # Exclusion Time Series ----------
+    observeEvent(input$ts_target, {
+        selection <- input$ts_target
+        
+        # all variables
+        ts_vars <- colnames(data_import())
+        ts_vars <- ts_vars[-1] # remove date variable
+        
+        cov_vars <- ts_vars[ts_vars != selection]
+        
+        updateSelectizeInput(session,
+                             "ts_exclude",
+                             "Select time series to exclude from covariate selection.",
+                             choices = cov_vars)
     })
     
     output$hat_table <- renderDataTable(data_import())
