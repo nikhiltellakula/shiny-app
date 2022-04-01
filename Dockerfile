@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y \
 # required R packages
 RUN R -e 'install.packages(c(\
     "shiny", \
-    "stringr" \
+    "stringr", \
+    "dplyr" \
 ), \
 repos = "http://cran.rstudio.com")'
 

@@ -1,13 +1,5 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
 library(shiny)
+library(dplyr)
 library(stringr)
 
 data_df <- readRDS("data-df.rds")
@@ -21,11 +13,13 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
-            sliderInput("bins",
-                        "Number of bins:",
-                        min = 1,
-                        max = 50,
-                        value = 30)
+            
+            # Date Range Select ----------
+            uiOutput("dates"),
+            
+            # Intervention Date Select ----------
+            uiOutput("int_date")
+            
         ),
 
         # Show a plot of the generated distribution
@@ -43,7 +37,28 @@ server <- function(input, output) {
     data_import <- reactive({
         df <- data_df
         colnames(df) <- str_replace_all(colnames(df), "[( .)]", "_")
-        df
+        df <- df %>% mutate(date = as.Date(date))
+    })
+    
+    # Update Date Range ----------
+    output$dates <- renderUI({
+        min_date <- min(data_import()$date)
+        max_date <- max(data_import()$date)
+        
+        dateRangeInput("date_range",
+                       "Specify date range.",
+                       start = min_date,
+                       end = max_date,
+                       min = min_date,
+                       max = max_date)
+    })
+    
+    # Add Intervention Date ----------
+    output$int_date <- renderUI({
+        date <- max(data_import()$date) - 14
+        dateInput("intervention",
+                  "Specify the intervention date.",
+                  value = date)
     })
     
     output$hat_table <- renderDataTable(data_import())
