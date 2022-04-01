@@ -29,7 +29,20 @@ ui <- fluidPage(
             selectizeInput("ts_exclude",
                            "Select time series to exclude from covariate selection.",
                            choices = NULL,
-                           multiple = T)
+                           multiple = T),
+            
+            # Covariate Selection Process ----------
+            radioButtons("cov_select",
+                         "Covariate Selection Process",
+                         c("Manual", "Automatic"),
+                         inline = T),
+            
+            # Number of Covariates ----------
+            conditionalPanel("input.cov_select == 'Automatic'",
+                             uiOutput("num_covariates"),
+                             checkboxInput("dtw",
+                                           "Use Dynamic Time Warping"),
+                             h6("WARNING: Computation time. Avoid using DTW with >100 covariates in data set."))
             
         ),
 
@@ -99,6 +112,14 @@ server <- function(input, output, session) {
                              "ts_exclude",
                              "Select time series to exclude from covariate selection.",
                              choices = cov_vars)
+    })
+    
+    # Update Number of Covariates ----------
+    output$num_covariates <- renderUI({
+        num_covs <- length(colnames(data_import())) - 2 - length(input$ts_exclude)
+        sliderInput("covs",
+                    "Covariates to be input to Causal Impact Model",
+                    min = 1, max = num_covs, value = 1)
     })
     
     output$hat_table <- renderDataTable(data_import())
