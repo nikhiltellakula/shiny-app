@@ -9,6 +9,8 @@
 
 library(shiny)
 
+data_df <- readRDS("data-df.rds")
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
