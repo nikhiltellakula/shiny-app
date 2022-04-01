@@ -10,11 +10,12 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libxt-dev \
     libssl-dev \
-    libssh2-1-dev 
+    libssh2-1-dev
 
 # required R packages
 RUN R -e 'install.packages(c(\
-    "shiny" \
+    "shiny", \
+    "stringr" \
 ), \
 repos = "http://cran.rstudio.com")'
 

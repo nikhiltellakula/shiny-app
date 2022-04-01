@@ -8,6 +8,7 @@
 #
 
 library(shiny)
+library(stringr)
 
 data_df <- readRDS("data-df.rds")
 
@@ -15,7 +16,7 @@ data_df <- readRDS("data-df.rds")
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Old Faithful Geyser Data"),
+    titlePanel("Causal Impact"),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
@@ -29,22 +30,23 @@ ui <- fluidPage(
 
         # Show a plot of the generated distribution
         mainPanel(
-           plotOutput("distPlot")
+           "Instructions",
+           dataTableOutput("hat_table")
         )
     )
 )
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-
-    output$distPlot <- renderPlot({
-        # generate bins based on input$bins from ui.R
-        x    <- faithful[, 2]
-        bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-        # draw the histogram with the specified number of bins
-        hist(x, breaks = bins, col = 'darkgray', border = 'white')
+    
+    # Data Import Function ----------
+    data_import <- reactive({
+        df <- data_df
+        colnames(df) <- str_replace_all(colnames(df), "[( .)]", "_")
+        df
     })
+    
+    output$hat_table <- renderDataTable(data_import())
 }
 
 # Run the application 
