@@ -42,7 +42,19 @@ ui <- fluidPage(
                              uiOutput("num_covariates"),
                              checkboxInput("dtw",
                                            "Use Dynamic Time Warping"),
-                             h6("WARNING: Computation time. Avoid using DTW with >100 covariates in data set."))
+                             h6("WARNING: Computation time. Avoid using DTW with >100 covariates in data set.")),
+            
+            # Time Series Visualization ----------
+            conditionalPanel("input.cov_select == 'Manual'",
+                             h3("Visualize the Time Series"),
+                             selectizeInput("ts_viz",
+                                            "Select the desired time series to plot.",
+                                            choices = NULL,
+                                            multiple = T)),
+            
+            # Highlight Target TS ----------
+            checkboxInput("ts_highlight",
+                          "Highlight the target time series"),
             
         ),
 
@@ -120,6 +132,23 @@ server <- function(input, output, session) {
         sliderInput("covs",
                     "Covariates to be input to Causal Impact Model",
                     min = 1, max = num_covs, value = 1)
+    })
+    
+    # Update Covariate Selection ----------
+    observe({
+        selection <- input$ts_target
+        selection2 <- input$ts_exclude
+        
+        # all variables
+        ts_vars <- colnames(data_import())
+        ts_vars <- ts_vars[-1]
+        
+        cov_vars <- ts_vars[!(ts_vars %in% c(selection, selection2))]
+        
+        updateSelectizeInput(session,
+                             "ts_viz",
+                             "Select the desired time series to plot.",
+                             choices = cov_vars)
     })
     
     output$hat_table <- renderDataTable(data_import())
