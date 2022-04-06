@@ -310,7 +310,11 @@ server <- function(input, output, session) {
                 theme_bw() +
                 labs(x = "Date Value",
                      y = "Response Value",
-                     color = "Time Series")
+                     color = "Time Series") +
+                geom_vline(xintercept = input$intervention,
+                           linetype = "twodash",
+                           color = "black",
+                           size = 1.5)
         } else if (input$ts_highlight == 1) {
             p <- ggplot(ts_df(), aes(x = date, y = value)) +
                 geom_line(aes(color = name == input$ts_target,
@@ -319,6 +323,10 @@ server <- function(input, output, session) {
                 theme_bw() +
                 labs(x = "Date Value",
                      y = "Response Value") +
+                geom_vline(xintercept = input$intervention,
+                           linetype = "twodash",
+                           color = "black",
+                           size = 1.5) +
                 scale_color_manual(name = "Time Series",
                                    labels = c("Covariates", input$ts_target),
                                    values = c("grey50", "red")) +
