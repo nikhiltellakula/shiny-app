@@ -56,6 +56,20 @@ ui <- fluidPage(
             checkboxInput("ts_highlight",
                           "Highlight the target time series"),
             
+            # CI Plot Selection ----------
+            selectizeInput("ci_plots",
+                           "Select the Causal Impact plots to display.",
+                           choices = c("Actual vs Expected" = "original",
+                                       "Pointwise" = "pointwise",
+                                       "Cumulative" = "cumulative"),
+                           selected = c("original",
+                                        "pointwise",
+                                        "cumulative"),
+                           multiple = T),
+            
+            # Run Causal Impact ----------
+            actionButton("run", "Run Causal Impact")
+            
         ),
 
         # Show a plot of the generated distribution
