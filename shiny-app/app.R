@@ -1,6 +1,7 @@
 library(shiny)
 library(dplyr)
 library(stringr)
+library(shinyHeatmaply)
 
 data_df <- readRDS("data-df.rds")
 
@@ -74,8 +75,62 @@ ui <- fluidPage(
 
         # Show a plot of the generated distribution
         mainPanel(
-           "Instructions",
-           dataTableOutput("hat_table")
+            tabsetPanel(
+                tabPanel(
+                    # Instructions ----------
+                    "Instructions",
+                    HTML('<ol type="1">
+                                 <li>Specify:</li>
+                                    <ol type = "a">
+                                        <li>the target time series, the the time series upon which we want to infer causal impact;</li>
+                                        <li>the date range, the time period of interest;</li>
+                                        <li>the intervention date, the date from which causal impact will be analyzed.</li>
+                                    </ol>
+                                 <li>With the target time series selected, it will be plotted in the <code>Time Series</code> tab.</li>
+                                 <li>Select any time series to be explicitly excluded from both manual and automatic covariate selection processes.</li>
+                                 <li>Specify the covariate selection process.</li>
+                                    <ol type="a">
+                                        <li>Manual allows the user to select the covariates of interest based on self-discovery and decisions.</li>
+                                        <li>Automatic covariate selection picks the <code>n</code> most highly correlated time series with the target time series over the non-intervention period.</li>
+                                        <li>The Dynamic Time Warping checkbox applies a soft dynamic time warping algorithm to calculate correlations among time series based on dates and shape instead of a 1:1 Euclidean date match.</li>
+                                    </ol>
+                                <li>Once at least a single extra covariate time series has been selected, the <code>Highlight the target time series</code> button will do just that.</li>
+                                <li>Once at least a single extra covariate time series has been selected, the correlation heatmap will be populated in the <code>Correlation</code> tab. The covariate time series will also be shown in the <code>Time Series</code> tab.</li>
+                                <li>After the desired covariates or method of covariate selection has been chosen, select the types of Causal Impact plots to be output.</li>
+                                    <ol type="a">
+                                        <li>Actual vs Expected: shows the actual target time series, the predicted, or expected, values for the target time series based on the covariate time series values, and the confidence limits of the predicted values.</li>
+                                        <li>Pointwise: the difference between oberved and expected values for the time series with accompanying confidence limits.</li>
+                                        <li>Cumulative: the cumulative sum of the difference between observed and expected values during the intervention period.</li>
+                                    </ol>
+                                <li>Once the parameters have all been selected as desired, click the <code>Run Causal Impact</code> button.</li>
+                                <li>The <code>Causal Impact</code> tab contains the causal impact plot coupled with a blurb describing the results of the algorithm. The blurb also explicitly states statistical significance of the intervention.</li>
+                                <li><code>Time Series Plot Parameters</code> contains options to modify the time series plot. The title, axis labels, and any text included in the plot can be modified.</li>
+                                <li><code>Correlation Heatmap Parameters</code> has a few editable parameters:</li>
+                                    <ol type="a">
+                                        <li>Color: allows to change the color scheme for the heatmap.</li>
+                                        <li>Layout: allows for axis labels and other text modifications.</li>
+                                        <li>Dendrogram: the default view for the correlation heatmap orders time series by descending correlations with the target time series. The heatmap can have a dendrogram that automatically clusters the time series. The dendrogram can be useful in order to find clusters of time series for a manual covariate check. The functions used to cluster the time series for the dendrogram are editable.</li>
+                                    </ol>
+                                <li>The parameters can be changed and modified; just need to click the <code>Run Causal Impact</code> button again.</li>
+                              </ol>')
+                ),
+                tabPanel(
+                    # Time Series Visualization ----------
+                    "Time Series",
+                    plotOutput("ts_plot", width = "100%", height = "800px")
+                ),
+                tabPanel(
+                    # Correlation Heatmap ----------
+                    "Correlation",
+                    plotlyOutput("heatout", height = "800px")
+                ),
+                tabPanel(
+                    # Causal Impact Visual ----------
+                    "Causal Impact Results",
+                    plotOutput("ci_plot", width = "100%"),
+                    textOutput("ci_report")
+                )
+            )
         )
     )
 )
