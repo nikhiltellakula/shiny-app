@@ -1,5 +1,6 @@
 library(shiny)
 library(dplyr)
+library(tidyr)
 library(stringr)
 library(shinyHeatmaply)
 
@@ -220,7 +221,121 @@ server <- function(input, output, session) {
                              choices = cov_vars)
     })
     
-    output$hat_table <- renderDataTable(data_import())
+    # Create TS Data Frame ----------
+    ts_df <- reactive({
+        # shiny requirements
+        req(input$date_range)
+        validate(need(!is.na(input$date_range[1]) & !is.na(input$date_range[2]),
+                      "Error: Please provide both a start and end date."))
+        validate(need(input$date_range[1] < input$date_range[2],
+                      "Error: Start date should be earlier than end date."))
+        validate(need(input$intervention < input$date_range[2] & 
+                          input$intervention > input$date_range[1],
+                      "Error: Intervention Date must be between start and end dates."))
+        
+        # remove the excluded time series
+        df_no_excl <- data_import() %>% 
+            select(-input$ts_exclude)
+        
+        # begin data processing
+        if (input$cov_select == "Manual") {
+            df <- df_no_excl %>% 
+                select(date, input$ts_target, input$ts_viz) %>% 
+                filter(date >= input$date_range[1] & date <= input$date_range[2]) %>% 
+                pivot_longer(cols = c(input$ts_target, input$ts_viz))
+        } else if (input$cov_select == "Automatic") {
+            # Dynamic Time Warping
+            if (input$dtw == 1) {
+                # all time series long instead of wide
+                dtw_df <- df_no_excl %>% 
+                    pivot_longer(!date,
+                                 names_to = "time_series",
+                                 values_to = "value")
+                
+                # find matched markets for each time series
+                mm <- best_matches(data = dtw_df,
+                                   id_variable = "time_series",
+                                   date_variable = "date",
+                                   matching_variable = "value",
+                                   parallel = TRUE,
+                                   warping_limit = 1,
+                                   dtw_emphasis = 0.5,
+                                   matches = input$covs,
+                                   start_match_period = input$date_range[1],
+                                   end_match_period = input$intervention)
+                
+                # extract covariates for time series of interest
+                best_covariates <- mm$BestMatches %>% 
+                    filter(time_series == input$ts_target)
+                
+                # filter for selected data
+                df <- df_no_excl %>% 
+                    select(date, input$ts_target, best_covariates$BestControl) %>% 
+                    filter(date >= input$date_range[1] & date <= input$date_range[2]) %>% 
+                    pivot_longer(cols = c(input$ts_target,
+                                          best_covariates$BestControl))
+                
+            } else if (input$dtw == 0) {
+                # no dynamic time warping
+                df <- df_no_excl %>% 
+                    # only want to correlate date range of interest
+                    filter(date >= input$date_range[1] & date < input$intervention) %>% 
+                    select(-date) %>% 
+                    select(input$ts_target, everything())
+                correlation <- cor(df)
+                correlation[is.na(correlation)] <- 0
+                correlation <- correlation[order(correlation[, 1],
+                                                 decreasing = T), ]
+                
+                # grabbing the automatic desired time series
+                num_ts <- input$covs + 1
+                ts_of_interest <- correlation[1:num_ts, ]
+                top <- rownames(ts_of_interest)
+                
+                # filter the data for TS listed in `top`
+                df <- df_no_excl %>% 
+                    select(date, all_of(top)) %>% 
+                    filter(date >= input$date_range[1] & date <= input$date_range[2]) %>% 
+                    pivot_longer(cols = all_of(top))
+            }
+        }
+        df
+    })
+    
+    # Time Series Visualization ----------
+    time_series_plot <- reactive({
+        if (input$ts_highlight == 0) {
+            p <- ggplot(ts_df(), aes(x = date, y = value, color = name)) +
+                geom_line() +
+                theme_bw() +
+                labs(x = "Date Value",
+                     y = "Response Value",
+                     color = "Time Series")
+        } else if (input$ts_highlight == 1) {
+            p <- ggplot(ts_df(), aes(x = date, y = value)) +
+                geom_line(aes(color = name == input$ts_target,
+                              size = name == input$ts_target,
+                              group = name)) +
+                theme_bw() +
+                labs(x = "Date Value",
+                     y = "Response Value") +
+                scale_color_manual(name = "Time Series",
+                                   labels = c("Covariates", input$ts_target),
+                                   values = c("grey50", "red")) +
+                scale_size_manual(name = "Time Series",
+                                  labels = c("Covariates", input$ts_target),
+                                  values = c(0.5, 2))
+        }
+        p
+    })
+    
+    # Render Time Series Plot ----------
+    observeEvent(input$ts_target, {
+        output$ts_plot <- renderPlot({
+            time_series_plot()
+        })
+    })
+    
 }
 
 # Run the application 
