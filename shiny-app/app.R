@@ -1,11 +1,227 @@
+# 1. Libraries -------------------------------------------------------------
+library(dtw)
 library(shiny)
 library(dplyr)
 library(tidyr)
 library(stringr)
 library(shinyHeatmaply)
 
+# 2. Raw Data Input  -------------------------------------------------------
 data_df <- readRDS("data-df.rds")
 
+# 3. Necessary Functions  --------------------------------------------------
+logplus <- function(x) {
+    sapply(x, function(x) {
+        if (x <= 0) {
+            return(0.00)
+        } else {
+            return(log(x))
+        }
+    })
+}
+
+create_market_vectors <- function(data, test_market, ref_market) {
+    
+    # remove missing values
+    d <- data %>% filter(!is.na(value))
+    
+    # filter for the market of interest
+    test <- d %>% 
+        filter(time_series == test_market) %>% 
+        select(date, value) %>% 
+        rename("y" = "value")
+    
+    # grab data of the reference markets
+    if (length(ref_market) == 1) {
+        ref <- d %>% 
+            filter(time_series == ref_market[1]) %>% 
+            select("date", "value") %>% 
+            rename("x1" = "value") %>% 
+            inner_join(test, by = "date")
+        
+        return(list(as.numeric(ref$y),
+                    as.numeric(ref$x1),
+                    as.Date(ref$date)))
+        
+    } else if (length(ref_market) > 1) {
+        d <- d %>% distinct(time_series, date, .keep_all = TRUE)
+        ref <- reshape2::dcast(subset(d, time_series %in% ref_market),
+                               date ~ time_series,
+                               value.var = "value")
+        names(ref) <- c("date", paste0("x", seq(1:length(ref_market))))
+        f <- test %>% inner_join(ref, by = "date") %>% drop_na()
+        
+        return(list(as.numeric(f$y),
+                    dplyr::select(f, num_range("x", 1:length(ref_market))),
+                    as.Date(f$date)))
+    }
+}
+
+calculate_distances <- function(market_to_be_matched, data,
+                                warping_limit, dtw_emphasis) {
+    
+    messages <- 0
+    
+    # list of all time series that are not market of interest
+    other_series <- unique(data$time_series)
+    
+    # empty data frame to store all the values
+    distances <- data.frame(matrix(nrow = length(other_series) - 1,
+                                   ncol = 10))
+    names(distances) <- c("time_series", "BestControl", "RelativeDistance",
+                          "Correlation", "Length", "SUMTEST", "SUMCNTL",
+                          "RAWDIST", "Correlation_of_logs", "populated")
+    distances$populated <- 0
+    
+    # define column to show market of interest
+    distances$time_series <- market_to_be_matched
+    
+    # remove the market of interest from the vector
+    potential_covariates <- other_series[!other_series == market_to_be_matched]
+    distances$BestControl <- potential_covariates
+    
+    # loop through all markets to find dtw distance
+    for (j in 1:length(potential_covariates)) {
+        
+        isValidTest <- TRUE
+        ThatMarket <- potential_covariates[j]
+        row <- which(startsWith(distances$BestControl, ThatMarket))
+        
+        mkts <- create_market_vectors(data, market_to_be_matched, ThatMarket)
+        
+        test <- mkts[[1]]
+        ref <- mkts[[2]]
+        dates <- mkts[[3]]
+        sum_test <- NA
+        sum_cntl <- NA
+        dist <- 0
+        
+        # If insufficient data or no variance
+        if ((stats::var(test) == 0 | 
+             length(test) <= 2 * warping_limit + 1) | 
+            sum(abs(test)) == 0) {
+            isValidTest <- FALSE
+            messages <- messages + 1
+        }
+        
+        # good enough data for dtw
+        if (market_to_be_matched != ThatMarket &
+            isValidTest == TRUE &
+            var(ref) > 0 &
+            length(test) > 2 * warping_limit + 1) {
+            sum_test <- abs(sum(test))
+            sum_cntl <- abs(sum(ref))
+            
+            if (dtw_emphasis > 0 & sum_test > 0) {
+                # actually calculate the distance between time series
+                rawdist <- dtw(test,
+                               ref,
+                               window.type = sakoeChibaWindow,
+                               window.size = warping_limit)$distance 
+                dist <- rawdist / sum_test
+            } else if (dtw_emphasis == 0) {
+                dist <- 0
+                rawdist <- 0
+            } else {
+                dist <- -1000000000
+                rawdist <- -1000000000
+            }
+            
+            # update the data frame
+            distances[row, "Correlation"] <- cor(test, ref)
+            distances[row, "populated"] <- 1
+            distances[row, "RelativeDistance"] <- dist
+            distances[row, "Skip"] <- FALSE
+            distances[row, "Length"] <- length(test)
+            distances[row, "SUMTEST"] <- sum_test
+            distances[row, "SUMCNTL"] <- sum_cntl
+            distances[row, "RAWDIST"] <- rawdist
+            
+            if (max(ref) > 0 & max(test) > 0) {
+                distances[row, "Correlation_of_logs"] <- cor(logplus(test),
+                                                             logplus(ref))
+            } else {
+                distances[row, "Correlation_of_logs"] <- -1000000000
+            }
+        } else {
+            if (market_to_be_matched != ThatMarket) {
+                messages <- messages + 1
+                distances[row, "Skip"] <- TRUE
+                if (dtw_emphasis == 0) {
+                    distances[row, "RelativeDistance"] <- 0
+                    distances[row, "RAWDIST"] <- 0
+                } else {
+                    distances[row, "RelativeDistance"] <- -1000000000
+                    distances[row, "RAWDIST"] <- -1000000000
+                }
+                
+                # update the data frame
+                distances[row, "populated"] <- 1
+                distances[row, "Correlation"] <- -1000000000
+                distances[row, "Length"] <- 0
+                distances[row, "SUMTEST"] <- 0
+                distances[row, "SUMCNTL"] <- 0
+                distances[row, "Correlation_of_logs"] <- -1000000000
+            }
+        }
+    }
+    
+    if (messages > 0) {
+        cat(paste0(messages,
+                   " markets were not matched with ",
+                   market_to_be_matched,
+                   " due to insufficient data or no variance."))
+        cat("\n")
+        cat("\n")
+    }
+    
+    distances$w <- dtw_emphasis
+    distances$MatchingStartDate <- min(data$date)
+    distances$MatchingEndDate <- max(data$date)
+    
+    # filter down to only the top matches
+    distances <- distances %>% 
+        filter(populated == 1) %>% 
+        mutate(dist_rank = rank(RelativeDistance),
+               corr_rank = rank(-Correlation),
+               combined_rank = w + dist_rank + (1 - w) + corr_rank) %>% 
+        arrange(combined_rank) %>% 
+        select(-dist_rank, -combined_rank, -corr_rank, -populated, -w) %>% 
+        mutate(rank = row_number(),
+               NORMDIST = if_else(
+                   SUMTEST + SUMCNTL > 0 & !(RAWDIST %in% c(-1000000000, 0)),
+                   2 * RAWDIST / (SUMTEST + SUMCNTL), -1000000000
+               ),
+               NORMDIST = na_if(NORMDIST, -1000000000),
+               NORMDIST = na_if(NORMDIST, 0),
+               RAWDIST = na_if(RAWDIST, -1000000000),
+               RAWDIST = na_if(RAWDIST, 0))
+    
+    if (dtw_emphasis == 0 & nrow(distances) > 0) {
+        distances$RelativeDistance <- NA
+    }
+    
+    return(distances)
+    
+}
+
+best_matches <- function(data, matches, market_to_be_matched,
+                         start_match_period, end_match_period) {
+    
+    # filter the data between the dates
+    data <- data %>% 
+        filter(date >= as.Date(start_match_period) & date <= as.Date(end_match_period))
+    
+    # calculate the distances
+    all_distances <- calculate_distances(market_to_be_matched, data, 1, 0.5)
+    
+    # filter to desired number
+    distances <- all_distances %>% filter(rank <= matches)
+    
+    return(distances)
+}
+
+# 4. Shiny App Itself  -----------------------------------------------------
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
@@ -42,7 +258,7 @@ ui <- fluidPage(
             # Number of Covariates ----------
             conditionalPanel("input.cov_select == 'Automatic'",
                              uiOutput("num_covariates"),
-                             checkboxInput("dtw",
+                             checkboxInput("dtw_button",
                                            "Use Dynamic Time Warping"),
                              h6("WARNING: Computation time. Avoid using DTW with >100 covariates in data set.")),
             
@@ -245,7 +461,7 @@ server <- function(input, output, session) {
                 pivot_longer(cols = c(input$ts_target, input$ts_viz))
         } else if (input$cov_select == "Automatic") {
             # Dynamic Time Warping
-            if (input$dtw == 1) {
+            if (input$dtw_button == 1) {
                 # all time series long instead of wide
                 dtw_df <- df_no_excl %>% 
                     pivot_longer(!date,
@@ -254,28 +470,34 @@ server <- function(input, output, session) {
                 
                 # find matched markets for each time series
                 mm <- best_matches(data = dtw_df,
-                                   id_variable = "time_series",
-                                   date_variable = "date",
-                                   matching_variable = "value",
-                                   parallel = TRUE,
-                                   warping_limit = 1,
-                                   dtw_emphasis = 0.5,
                                    matches = input$covs,
+                                   market_to_be_matched = input$ts_target,
                                    start_match_period = input$date_range[1],
                                    end_match_period = input$intervention)
+                # mm <- best_matches(data = dtw_df,
+                #                    id_variable = "time_series",
+                #                    date_variable = "date",
+                #                    matching_variable = "value",
+                #                    parallel = TRUE,
+                #                    warping_limit = 1,
+                #                    dtw_emphasis = 0.5,
+                #                    matches = input$covs,
+                #                    start_match_period = input$date_range[1],
+                #                    end_match_period = input$intervention)
                 
                 # extract covariates for time series of interest
-                best_covariates <- mm$BestMatches %>% 
-                    filter(time_series == input$ts_target)
+                # best_covariates <- mm$BestMatches %>% 
+                #     filter(time_series == input$ts_target)
+                best_covariates <- mm$BestControl
                 
                 # filter for selected data
                 df <- df_no_excl %>% 
-                    select(date, input$ts_target, best_covariates$BestControl) %>% 
+                    select(date, input$ts_target, best_covariates) %>% 
                     filter(date >= input$date_range[1] & date <= input$date_range[2]) %>% 
                     pivot_longer(cols = c(input$ts_target,
-                                          best_covariates$BestControl))
+                                          best_covariates))
                 
-            } else if (input$dtw == 0) {
+            } else if (input$dtw_button == 0) {
                 # no dynamic time warping
                 df <- df_no_excl %>% 
                     # only want to correlate date range of interest
