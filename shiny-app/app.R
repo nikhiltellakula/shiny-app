@@ -474,20 +474,7 @@ server <- function(input, output, session) {
                                    market_to_be_matched = input$ts_target,
                                    start_match_period = input$date_range[1],
                                    end_match_period = input$intervention)
-                # mm <- best_matches(data = dtw_df,
-                #                    id_variable = "time_series",
-                #                    date_variable = "date",
-                #                    matching_variable = "value",
-                #                    parallel = TRUE,
-                #                    warping_limit = 1,
-                #                    dtw_emphasis = 0.5,
-                #                    matches = input$covs,
-                #                    start_match_period = input$date_range[1],
-                #                    end_match_period = input$intervention)
-                
-                # extract covariates for time series of interest
-                # best_covariates <- mm$BestMatches %>% 
-                #     filter(time_series == input$ts_target)
+
                 best_covariates <- mm$BestControl
                 
                 # filter for selected data
@@ -563,6 +550,81 @@ server <- function(input, output, session) {
     observeEvent(input$ts_target, {
         output$ts_plot <- renderPlot({
             time_series_plot()
+        })
+    })
+    
+    # Create COR Data Frame ----------
+    cor_df <- reactive({
+        df <- ts_df() %>%
+            pivot_wider() %>% 
+            filter(date < input$intervention) %>% 
+            select(-date)
+        df <- cor(df)
+        df[is.na(df)] <- 0
+        
+        # sort by the target column -- most correlated time series
+        df <- df[order(df[, 1], decreasing = T), ]
+        to_order <- rownames(df)
+        df <- subset(df, select = to_order)
+        df
+    })
+    
+    # Correlation Heatmap ----------
+    interactive_heatmap <- reactive({
+        df <- cor_df()
+        
+        # dendrogram clustering parameters
+        distfun_row <- function(x) {
+            dist(x, method = input$distFun_row)
+        }
+        distfun_col <- function(x) {
+            dist(x, method = input$distFun_col)
+        }
+        
+        hclustfun_row <- function(x) {
+            hclust(x, method = input$hclustFun_row)
+        }
+        hclustfun_col <- function(x) {
+            hclust(x, method = input$hclustFun_col)
+        }
+        
+        # actual plot code
+        p <- heatmaply(
+            df,
+            colors = RdBu(256),
+            main = "Correlation Heatmap",
+            xlab = "Time Series",
+            ylab = "Time Series",
+            row_text_angle = 0,
+            column_text_angle = 45,
+            dendrogram = "none"
+            # colors = eval(parse(text = paste0(input$pal, "(", input$ncol, ")"))),
+            # main = input$main_hm,
+            # xlab = input$xlab_hm,
+            # ylab = input$ylab_hm,
+            # row_text_angle = input$row_text_angle,
+            # column_text_angle = input$column_text_angle,
+            # dendrogram = input$dendrogram,
+            # branches_lwd = input$branches_lwd,
+            # seriate = input$seriation,
+            # scale = input$scale,
+            # distfun_row = distfun_row,
+            # distfun_col = distfun_col,
+            # hclustfun_row = hclustfun_row,
+            # hclustfun_col = hclustfun_col,
+            # k_col = input$c,
+            # k_row = input$r
+        ) %>% 
+            layout(margin = list(l = input$l,
+                                 b = input$b,
+                                 r = "0px"))
+        p
+    })
+    
+    # Render Heatmap ----------
+    observeEvent(input$ts_target, {
+        output$heatout <- renderPlotly({
+            interactive_heatmap()
         })
     })
     
