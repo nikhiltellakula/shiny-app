@@ -286,8 +286,41 @@ ui <- fluidPage(
                            multiple = T),
             
             # Run Causal Impact ----------
-            actionButton("run", "Run Causal Impact")
+            actionButton("run", "Run Causal Impact"),
             
+            br(),
+            hr(),
+
+            # Heatmap Parameters ----------
+            h4("Correlation Heatmap Parameters"),
+            
+            # Conditional: Dendrogram Parameters ----------
+            selectInput("dendrogram",
+                        "Dendrogram Type",
+                        c("both", "row", "column", "none"),
+                        selected = "none"),
+            conditionalPanel(
+                "input.dendrogram == 'both' || input.dendrogram == 'row'",
+                column(
+                    width = 6,
+                    sliderInput("r",
+                                "Number of Clusters - Row",
+                                min = 1, max = 15, value = 2)
+                )
+            ),
+            conditionalPanel(
+                "input.dendrogram == 'both' || input.dendrogram == 'column'",
+                column(
+                    width = 6,
+                    sliderInput("c",
+                                "Number of Clusters - Column",
+                                min = 1, max = 15, value = 2)
+                )
+            ),
+            
+            br(),
+            hr(),
+            hr()
         ),
 
         # Show a plot of the generated distribution
@@ -321,12 +354,10 @@ ui <- fluidPage(
                                     </ol>
                                 <li>Once the parameters have all been selected as desired, click the <code>Run Causal Impact</code> button.</li>
                                 <li>The <code>Causal Impact</code> tab contains the causal impact plot coupled with a blurb describing the results of the algorithm. The blurb also explicitly states statistical significance of the intervention.</li>
-                                <li><code>Time Series Plot Parameters</code> contains options to modify the time series plot. The title, axis labels, and any text included in the plot can be modified.</li>
                                 <li><code>Correlation Heatmap Parameters</code> has a few editable parameters:</li>
                                     <ol type="a">
-                                        <li>Color: allows to change the color scheme for the heatmap.</li>
-                                        <li>Layout: allows for axis labels and other text modifications.</li>
-                                        <li>Dendrogram: the default view for the correlation heatmap orders time series by descending correlations with the target time series. The heatmap can have a dendrogram that automatically clusters the time series. The dendrogram can be useful in order to find clusters of time series for a manual covariate check. The functions used to cluster the time series for the dendrogram are editable.</li>
+                                        <li>Dendrogram: the default view for the correlation heatmap orders time series by descending correlations with the target time series. The heatmap can have a dendrogram that automatically clusters the time series. The dendrogram can be useful in order to find clusters of time series for a manual covariate check. Row- and column-wise distances are correlation-based clustering and use Pearson correlation. The linkage method aims at finding simlilar clusters.</li>
+                                        <li>Select the number of highlighted clusters for the row and/or column clustering dendrogram.</li>
                                     </ol>
                                 <li>The parameters can be changed and modified; just need to click the <code>Run Causal Impact</code> button again.</li>
                               </ol>')
@@ -573,21 +604,6 @@ server <- function(input, output, session) {
     interactive_heatmap <- reactive({
         df <- cor_df()
         
-        # dendrogram clustering parameters
-        distfun_row <- function(x) {
-            dist(x, method = input$distFun_row)
-        }
-        distfun_col <- function(x) {
-            dist(x, method = input$distFun_col)
-        }
-        
-        hclustfun_row <- function(x) {
-            hclust(x, method = input$hclustFun_row)
-        }
-        hclustfun_col <- function(x) {
-            hclust(x, method = input$hclustFun_col)
-        }
-        
         # actual plot code
         p <- heatmaply(
             df,
@@ -597,26 +613,14 @@ server <- function(input, output, session) {
             ylab = "Time Series",
             row_text_angle = 0,
             column_text_angle = 45,
-            dendrogram = "none"
-            # colors = eval(parse(text = paste0(input$pal, "(", input$ncol, ")"))),
-            # main = input$main_hm,
-            # xlab = input$xlab_hm,
-            # ylab = input$ylab_hm,
-            # row_text_angle = input$row_text_angle,
-            # column_text_angle = input$column_text_angle,
-            # dendrogram = input$dendrogram,
-            # branches_lwd = input$branches_lwd,
-            # seriate = input$seriation,
-            # scale = input$scale,
-            # distfun_row = distfun_row,
-            # distfun_col = distfun_col,
-            # hclustfun_row = hclustfun_row,
-            # hclustfun_col = hclustfun_col,
-            # k_col = input$c,
-            # k_row = input$r
+            dendrogram = input$dendrogram,
+            seriate = "OLO",
+            distfun = "pearson",
+            k_col = input$c,
+            k_row = input$r
         ) %>% 
-            layout(margin = list(l = input$l,
-                                 b = input$b,
+            layout(margin = list(l = 130,
+                                 b = 40,
                                  r = "0px"))
         p
     })
