@@ -1,9 +1,11 @@
 # 1. Libraries -------------------------------------------------------------
+library(zoo)
 library(dtw)
 library(shiny)
 library(dplyr)
 library(tidyr)
 library(stringr)
+# library(CausalImpact)
 library(shinyHeatmaply)
 
 # 2. Raw Data Input  -------------------------------------------------------
@@ -631,6 +633,44 @@ server <- function(input, output, session) {
             interactive_heatmap()
         })
     })
+    
+    # Run Causal Impact ----------
+    ci <- reactive({
+        
+        # create the data frame
+        df <- ts_df() %>% pivot_wider()
+        min_date <- min(df$date)
+        max_date <- max(df$date)
+        df <- zoo::zoo(df %>% select(-date), df %>% pull(date))
+        
+        # specify dates
+        pre_period <- c(min_date, input$intervention - 1)
+        post_period <- c(input$intervention, max_date)
+        
+        # run causal impact
+        impact <- CausalImpact(
+            df,
+            pre_period,
+            post_period,
+            model.args = list(nseasons = 7,
+                              season.duration = 1)
+        )
+        impact
+    })
+    
+    # Causal Impact Output ----------
+    causal_impact_plot <- eventReactive(input$run, {
+        plot(ci(), metrics = input$ci_plots)
+    })
+    output$ci_plot <- renderPlot(
+        causal_impact_plot()
+    )
+    
+    # Causal Impact Report ----------
+    causal_impact_text <- eventReactive(input$run, {
+        ci()$report
+    })
+    output$ci_report <- renderText(causal_impact_text())
     
 }
 

@@ -19,6 +19,7 @@ RUN R -e 'install.packages(c(\
     "dplyr", \
     "tidyr", \
     "dtw" , \
+    "zoo", \
     "shinyHeatmaply" \
 ), \
 repos = "http://cran.rstudio.com")'
